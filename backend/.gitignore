@@ -43,3 +43,10 @@ wheels/
 .DS_Store
 Thumbs.db
 
+# Gmail and Calendar OAuth credentials
+gmail/
+!gmail/README.md
+*.json
+!package.json
+!server_config.json
+
