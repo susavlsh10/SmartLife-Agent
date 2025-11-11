@@ -1,0 +1,34 @@
+{
+    "mcpServers": {
+        "gemini_search": {
+            "command": "uv",
+            "args": ["run", "mcp_servers/gemini_search.py"],
+            "env": {}
+        },
+        "gmail": {
+        "command": "uv",
+        "args": ["run", "mcp_servers/gmail_mcp_server.py"],
+        "env": {
+            "GMAIL_CREDENTIALS_FILE": "gmail/google_credentials.json",
+            "GMAIL_TOKEN_FILE": "gmail/gmail_token.json"
+        }
+        },
+        "google_calendar": {
+            "command": "uv",
+            "args": ["run", "mcp_servers/google_calendar_server.py"],
+            "env": {
+                "GMAIL_CREDENTIALS_FILE": "gmail/google_credentials.json",
+                "GMAIL_TOKEN_FILE": "gmail/token.json"
+            }
+        },
+        "pdf-processor": {
+            "command": "uv",
+            "args": ["run", "mcp_servers/pdf_server.py"],
+            "env": null
+        },
+        "dominos": {
+            "command": "uv",
+            "args": ["run", "mcp_servers/dominos_server.py"]
+        }
+    }
+}

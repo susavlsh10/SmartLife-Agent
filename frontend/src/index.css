@@ -11,6 +11,39 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* Markdown styling for chat messages */
+.prose code {
+  @apply bg-gray-100 text-gray-800 px-1.5 py-0.5 rounded text-xs;
+}
+
+.prose pre {
+  @apply bg-gray-900 text-gray-100 rounded-lg p-3 overflow-x-auto;
+}
+
+.prose pre code {
+  @apply bg-transparent text-gray-100 px-0 py-0;
+}
+
+.prose a {
+  @apply text-indigo-600 hover:text-indigo-800 underline;
+}
+
+.prose blockquote {
+  @apply border-l-4 border-gray-300 pl-4 italic text-gray-600;
+}
+
+.prose table {
+  @apply w-full border-collapse;
+}
+
+.prose th {
+  @apply bg-gray-100 font-semibold text-left p-2 border border-gray-300;
+}
+
+.prose td {
+  @apply p-2 border border-gray-300;
+}
+
 #root {
   min-height: 100vh;
 }

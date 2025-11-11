@@ -1,5 +1,6 @@
-from pydantic import BaseModel, EmailStr
-from typing import Optional
+from pydantic import BaseModel, EmailStr, field_validator
+from typing import Optional, List
+from datetime import datetime
 
 
 class UserSignup(BaseModel):
@@ -37,4 +38,95 @@ class ChatHistoryItem(BaseModel):
     message: str
     response: str
     timestamp: str
+
+
+# Project Models
+class TodoItemCreate(BaseModel):
+    text: str
+    completed: bool = False
+
+
+class TodoItemUpdate(BaseModel):
+    text: Optional[str] = None
+    completed: Optional[bool] = None
+
+
+class TodoItemResponse(BaseModel):
+    id: str
+    text: str
+    completed: bool
+    order_index: Optional[str] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class ProjectCreate(BaseModel):
+    title: str
+    description: Optional[str] = None
+    due_date: Optional[str] = None
+    
+    @field_validator('due_date')
+    @classmethod
+    def parse_due_date(cls, v):
+        if v is None or v == '':
+            return None
+        if isinstance(v, datetime):
+            return v
+        # Try to parse the date string
+        try:
+            return datetime.fromisoformat(v.replace('Z', '+00:00'))
+        except:
+            return datetime.strptime(v, '%Y-%m-%d')
+
+
+class ProjectUpdate(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    due_date: Optional[str] = None
+    
+    @field_validator('due_date')
+    @classmethod
+    def parse_due_date(cls, v):
+        if v is None or v == '':
+            return None
+        if isinstance(v, datetime):
+            return v
+        # Try to parse the date string
+        try:
+            return datetime.fromisoformat(v.replace('Z', '+00:00'))
+        except:
+            return datetime.strptime(v, '%Y-%m-%d')
+
+
+class ProjectResponse(BaseModel):
+    id: str
+    title: str
+    description: Optional[str] = None
+    due_date: Optional[datetime] = None
+    created_at: datetime
+    updated_at: datetime
+    todos: List[TodoItemResponse] = []
+
+    class Config:
+        from_attributes = True
+
+
+class ProjectChatMessage(BaseModel):
+    message: str
+
+
+class ProjectChatResponse(BaseModel):
+    response: str
+
+
+class ProjectChatHistoryItem(BaseModel):
+    id: str
+    message: str
+    response: str
+    timestamp: datetime
+
+    class Config:
+        from_attributes = True
 
