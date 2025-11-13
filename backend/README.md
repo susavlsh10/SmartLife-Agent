@@ -27,11 +27,24 @@ pip install -r requirements.txt
    - Copy `.env.example` to `.env`
    - Add your `SECRET_KEY` (any secure random string)
    - Add your `GEMINI_API_KEY` from [Google AI Studio](https://makersuite.google.com/app/apikey)
+   - Add Google OAuth credentials:
+     - `GOOGLE_CLIENT_ID` - OAuth 2.0 Client ID
+     - `GOOGLE_CLIENT_SECRET` - OAuth 2.0 Client Secret
+     - `GOOGLE_REDIRECT_URI` - OAuth redirect URI (default: http://localhost:5173/settings/oauth/callback)
 
 ```bash
 cp .env.example .env
 # Edit .env and add your keys
 ```
+
+**Setting up Google OAuth:**
+1. Go to [Google Cloud Console](https://console.cloud.google.com/)
+2. Create a new project or select an existing one
+3. Enable Google Calendar API
+4. Go to "Credentials" > "Create Credentials" > "OAuth client ID"
+5. Choose "Web application" as the application type
+6. Add authorized redirect URI: `http://localhost:5173/settings/oauth/callback` (or your frontend URL)
+7. Copy the Client ID and Client Secret to your `.env` file
 
 3. **Run the server:**
 ```bash

@@ -1,29 +1,45 @@
 import asyncio
 import json
-from datetime import datetime, timedelta
-import pytz
-from typing import Any, Sequence
-from mcp.server import Server
-from mcp.server.stdio import stdio_server
-from mcp.types import Resource, Tool, TextContent, ImageContent, EmbeddedResource
-from pydantic import AnyUrl
 import os
+import sys
+from datetime import datetime, timedelta
+from pathlib import Path
+from typing import Any, Optional, Sequence
+
+import pytz
+from dotenv import load_dotenv
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
+from mcp.server import Server
+from mcp.server.stdio import stdio_server
+from mcp.types import EmbeddedResource, ImageContent, Resource, TextContent, Tool
+
+# Ensure backend root is on sys.path for `import app.*`
+BACKEND_ROOT = Path(__file__).resolve().parents[2]
+if str(BACKEND_ROOT) not in sys.path:
+    sys.path.insert(0, str(BACKEND_ROOT))
+
+from app.database import SessionLocal
+from app.db_models import GoogleCalendarCredentials
 
 # Google Calendar API scopes
 SCOPES = ['https://www.googleapis.com/auth/calendar']
 
+# Load environment variables
+load_dotenv()
+
+DEFAULT_CALENDAR_USER_ID = os.getenv('CALENDAR_USER_ID')
+
 class GoogleCalendarServer:
-    def __init__(self):
+    def __init__(self, user_id: Optional[str] = None):
         self.server = Server("google-calendar")
         self.service = None
         # Set your local timezone - adjust this to your actual timezone
         self.local_timezone =  pytz.timezone('America/Chicago')
         # Or use: pytz.timezone('America/Los_Angeles')  # PST/PDT
+        self.user_id = user_id or DEFAULT_CALENDAR_USER_ID
         self._setup_tools()
         
     def _setup_tools(self):
@@ -135,77 +151,77 @@ class GoogleCalendarServer:
                 raise ValueError(f"Unknown tool: {name}")
 
     async def _authenticate(self):
-        """Authenticate with Google Calendar API"""
-        import asyncio
-        from concurrent.futures import ThreadPoolExecutor
-        
-        creds = None
-        token_file = os.getenv('GMAIL_TOKEN_FILE', 'token.json')
-        credentials_file = os.getenv('GMAIL_CREDENTIALS_FILE', 'credentials.json')
-        
-        # Load existing token
-        if os.path.exists(token_file):
-            try:
-                creds = Credentials.from_authorized_user_file(token_file, SCOPES)
-            except Exception as e:
-                print(f"Warning: Failed to load existing token: {e}")
-                # Delete corrupted token file
-                os.remove(token_file)
-                creds = None
+        """Authenticate with Google Calendar API using credentials stored in the database"""
 
-        # If no valid credentials, get new ones
-        if not creds or not creds.valid:
-            if creds and creds.expired and creds.refresh_token:
+        with SessionLocal() as session:
+            query = session.query(GoogleCalendarCredentials)
+            if self.user_id:
+                credentials_entry = query.filter(GoogleCalendarCredentials.user_id == self.user_id).first()
+            else:
+                credentials_entry = query.first()
+
+            if not credentials_entry or not credentials_entry.token_json:
+                raise RuntimeError(
+                    "Google Calendar is not connected. Please connect your calendar via the Settings page."
+                )
+
+            token_data = json.loads(credentials_entry.token_json)
+            credentials_info = {}
+            if credentials_entry.credentials_json:
                 try:
-                    print("Refreshing expired Calendar token...")
-                    creds.refresh(Request())
-                except Exception as e:
-                    print(f"Failed to refresh Calendar token: {e}")
-                    # Delete bad token and force re-auth
-                    if os.path.exists(token_file):
-                        os.remove(token_file)
-                    creds = None
-            
-            if not creds:
-                # Need to run OAuth flow - but can't do it in server context
-                if not os.path.exists(credentials_file):
-                    raise FileNotFoundError(
-                        f"Calendar authentication required. Please run the authentication script first: "
-                        f"python backend/authenticate_google.py"
-                    )
-                
-                # Try to run OAuth in thread with timeout
-                print(f"🔐 Calendar OAuth required. Attempting authentication...")
-                
-                def run_oauth_flow():
-                    flow = InstalledAppFlow.from_client_secrets_file(credentials_file, SCOPES)
-                    return flow.run_local_server(port=0, open_browser=True)
-                
-                try:
-                    # Run OAuth flow in thread with 30 second timeout
-                    loop = asyncio.get_event_loop()
-                    with ThreadPoolExecutor() as executor:
-                        creds = await asyncio.wait_for(
-                            loop.run_in_executor(executor, run_oauth_flow),
-                            timeout=30.0
-                        )
-                    print("✅ Calendar authentication successful!")
-                except asyncio.TimeoutError:
+                    credentials_info = json.loads(credentials_entry.credentials_json)
+                except json.JSONDecodeError:
+                    credentials_info = {}
+
+            client_id = (
+                token_data.get('client_id')
+                or credentials_info.get('client_id')
+                or os.getenv('GOOGLE_CLIENT_ID')
+            )
+            client_secret = (
+                token_data.get('client_secret')
+                or credentials_info.get('client_secret')
+                or os.getenv('GOOGLE_CLIENT_SECRET')
+            )
+            token_uri = token_data.get('token_uri') or 'https://oauth2.googleapis.com/token'
+
+            if not client_id or not client_secret:
+                raise RuntimeError(
+                    "Google OAuth credentials are not configured. Please ensure GOOGLE_CLIENT_ID and "
+                    "GOOGLE_CLIENT_SECRET are set in the environment."
+                )
+
+            creds = Credentials(
+                token=token_data.get('token'),
+                refresh_token=token_data.get('refresh_token'),
+                token_uri=token_uri,
+                client_id=client_id,
+                client_secret=client_secret,
+                scopes=token_data.get('scopes', SCOPES),
+            )
+
+            if not creds.valid:
+                if creds.expired and creds.refresh_token:
+                    try:
+                        print("Refreshing Google Calendar access token...")
+                        creds.refresh(Request())
+                        token_data['token'] = creds.token
+                        if creds.expiry:
+                            token_data['expiry'] = creds.expiry.isoformat()
+                        credentials_entry.token_json = json.dumps(token_data)
+                        session.commit()
+                        print("✅ Token refreshed successfully")
+                    except Exception as refresh_error:
+                        raise RuntimeError(
+                            "Failed to refresh Google Calendar access token. Please reconnect your calendar via the "
+                            "Settings page."
+                        ) from refresh_error
+                else:
                     raise RuntimeError(
-                        "Calendar OAuth timed out. Please authenticate manually by running: "
-                        "cd backend && python authenticate_google.py"
+                        "Stored Google Calendar token is invalid or expired. Please reconnect your calendar via the "
+                        "Settings page."
                     )
-                except Exception as e:
-                    raise RuntimeError(
-                        f"Calendar authentication failed: {e}. "
-                        "Please run: cd backend && python authenticate_google.py"
-                    )
-            
-            # Save credentials for future use
-            if creds:
-                with open(token_file, 'w') as token:
-                    token.write(creds.to_json())
-        
+
         self.service = build('calendar', 'v3', credentials=creds)
 
     async def _schedule_meeting(self, args: dict) -> Sequence[TextContent]:

@@ -17,8 +17,7 @@
             "command": "uv",
             "args": ["run", "mcp_servers/google_calendar_server.py"],
             "env": {
-                "GMAIL_CREDENTIALS_FILE": "gmail/google_credentials.json",
-                "GMAIL_TOKEN_FILE": "gmail/token.json"
+                "PYTHONPATH": "."
             }
         },
         "pdf-processor": {

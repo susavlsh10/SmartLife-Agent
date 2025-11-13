@@ -22,6 +22,8 @@ class User(Base):
     # Relationships
     chat_history = relationship("ChatHistory", back_populates="user", cascade="all, delete-orphan")
     projects = relationship("Project", back_populates="user", cascade="all, delete-orphan")
+    google_calendar_credentials = relationship("GoogleCalendarCredentials", back_populates="user", uselist=False, cascade="all, delete-orphan")
+    user_preferences = relationship("UserPreferences", back_populates="user", uselist=False, cascade="all, delete-orphan")
 
 
 class ChatHistory(Base):
@@ -79,4 +81,46 @@ class ProjectChatMessage(Base):
 
     # Relationship to project
     project = relationship("Project", back_populates="chat_messages")
+
+
+class GoogleCalendarCredentials(Base):
+    __tablename__ = "google_calendar_credentials"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    user_id = Column(String, ForeignKey("users.id"), nullable=False, unique=True, index=True)
+    credentials_json = Column(Text, nullable=False)  # Store credentials.json content
+    token_json = Column(Text, nullable=True)  # Store token.json content
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationship to user
+    user = relationship("User", back_populates="google_calendar_credentials")
+
+
+class UserPreferences(Base):
+    __tablename__ = "user_preferences"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    user_id = Column(String, ForeignKey("users.id"), nullable=False, unique=True, index=True)
+    
+    # Work/Study time preferences
+    work_study_weekdays = Column(String, nullable=True)  # e.g., "9-17" for 9am-5pm
+    work_study_weekends = Column(String, nullable=True)  # e.g., "any" or "10-14"
+    work_study_all_time = Column(Boolean, default=False)  # If true, available all time
+    
+    # Gym/Activity time preferences
+    gym_activity_weekdays = Column(String, nullable=True)
+    gym_activity_weekends = Column(String, nullable=True)
+    gym_activity_all_time = Column(Boolean, default=False)
+    
+    # Personal goals time preferences
+    personal_goals_weekdays = Column(String, nullable=True)
+    personal_goals_weekends = Column(String, nullable=True)
+    personal_goals_all_time = Column(Boolean, default=False)
+    
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationship to user
+    user = relationship("User", back_populates="user_preferences")
 
