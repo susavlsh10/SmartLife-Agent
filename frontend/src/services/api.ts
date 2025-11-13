@@ -1,22 +1,18 @@
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api'
 
-interface ApiResponse<T> {
-  data?: T
-  error?: string
-}
-
 async function request<T>(
   endpoint: string,
   options: RequestInit = {}
 ): Promise<T> {
   const token = localStorage.getItem('token')
-  const headers: HeadersInit = {
-    'Content-Type': 'application/json',
-    ...options.headers,
+  const headers = new Headers(options.headers as HeadersInit | undefined)
+
+  if (!headers.has('Content-Type') && options.body) {
+    headers.set('Content-Type', 'application/json')
   }
 
   if (token) {
-    headers['Authorization'] = `Bearer ${token}`
+    headers.set('Authorization', `Bearer ${token}`)
   }
 
   const response = await fetch(`${API_BASE_URL}${endpoint}`, {
@@ -156,6 +152,67 @@ export const projectsApi = {
 
   getChatHistory: async (projectId: string) => {
     return request<ProjectChatMessage[]>(`/projects/${projectId}/chat/history`)
+  },
+}
+
+export interface TimePreference {
+  weekdays?: string
+  weekends?: string
+  all_time: boolean
+}
+
+export interface UserPreferences {
+  work_study: TimePreference
+  gym_activity: TimePreference
+  personal_goals: TimePreference
+}
+
+export interface GoogleCalendarStatus {
+  connected: boolean
+  email?: string
+}
+
+export const settingsApi = {
+  updatePassword: async (currentPassword: string, newPassword: string) => {
+    return request<{ message: string }>('/settings/password', {
+      method: 'POST',
+      body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+    })
+  },
+
+  getGoogleCalendarStatus: async () => {
+    return request<GoogleCalendarStatus>('/settings/google-calendar/status')
+  },
+
+  getGoogleCalendarAuthUrl: async (redirectUri?: string) => {
+    const params = redirectUri ? `?redirect_uri=${encodeURIComponent(redirectUri)}` : ''
+    return request<{ authorization_url: string; state: string }>(`/settings/google-calendar/authorize${params}`)
+  },
+
+  completeGoogleCalendarOAuth: async (code: string, state: string, redirectUri: string) => {
+    const params = new URLSearchParams({
+      code,
+      state,
+      redirect_uri: redirectUri,
+    })
+    return request<{ message: string; email?: string }>(`/settings/google-calendar/callback?${params.toString()}`)
+  },
+
+  disconnectGoogleCalendar: async () => {
+    return request<{ message: string }>('/settings/google-calendar/disconnect', {
+      method: 'DELETE',
+    })
+  },
+
+  getPreferences: async () => {
+    return request<UserPreferences>('/settings/preferences')
+  },
+
+  updatePreferences: async (preferences: UserPreferences) => {
+    return request<UserPreferences>('/settings/preferences', {
+      method: 'PUT',
+      body: JSON.stringify(preferences),
+    })
   },
 }
 

@@ -46,6 +46,16 @@ export default function Layout({ children }: LayoutProps) {
                 >
                   General Chat
                 </button>
+                <button
+                  onClick={() => navigate('/settings')}
+                  className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                    location.pathname === '/settings'
+                      ? 'bg-indigo-100 text-indigo-700'
+                      : 'text-gray-700 hover:bg-gray-100'
+                  }`}
+                >
+                  Settings
+                </button>
               </div>
             </div>
             <div className="flex items-center space-x-4">
@@ -63,7 +73,9 @@ export default function Layout({ children }: LayoutProps) {
         </div>
       </nav>
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 h-[calc(100vh-12rem)]">
+        <div className={`bg-white rounded-lg shadow-sm border border-gray-200 ${
+          location.pathname === '/settings' ? 'min-h-[calc(100vh-12rem)]' : 'h-[calc(100vh-12rem)]'
+        }`}>
           {children}
         </div>
       </main>

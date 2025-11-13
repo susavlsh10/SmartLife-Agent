@@ -1,7 +1,7 @@
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.routers import auth, chat, projects
+from app.routers import auth, chat, projects, settings
 from app.database import init_db
 from app import db_models  # Import models to register them with SQLAlchemy
 from app.agent.mcp_agent import cleanup_mcp_agent
@@ -35,6 +35,7 @@ app.add_middleware(
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(chat.router, prefix="/api/chat", tags=["chat"])
 app.include_router(projects.router, prefix="/api/projects", tags=["projects"])
+app.include_router(settings.router, prefix="/api/settings", tags=["settings"])
 
 
 @app.get("/")
