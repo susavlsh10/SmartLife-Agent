@@ -44,17 +44,53 @@ class ChatHistoryItem(BaseModel):
 class TodoItemCreate(BaseModel):
     text: str
     completed: bool = False
+    due_date: Optional[str] = None
+    
+    @field_validator('due_date')
+    @classmethod
+    def parse_due_date(cls, v):
+        if v is None or v == '':
+            return None
+        if isinstance(v, datetime):
+            return v
+        # Try to parse the date string
+        try:
+            return datetime.fromisoformat(v.replace('Z', '+00:00'))
+        except:
+            try:
+                return datetime.strptime(v, '%Y-%m-%d')
+            except:
+                return datetime.strptime(v, '%Y-%m-%dT%H:%M:%S')
 
 
 class TodoItemUpdate(BaseModel):
     text: Optional[str] = None
     completed: Optional[bool] = None
+    due_date: Optional[str] = None
+    
+    @field_validator('due_date')
+    @classmethod
+    def parse_due_date(cls, v):
+        if v is None or v == '':
+            return None
+        if isinstance(v, datetime):
+            return v
+        # Try to parse the date string
+        try:
+            return datetime.fromisoformat(v.replace('Z', '+00:00'))
+        except:
+            try:
+                return datetime.strptime(v, '%Y-%m-%d')
+            except:
+                return datetime.strptime(v, '%Y-%m-%dT%H:%M:%S')
 
 
 class TodoItemResponse(BaseModel):
     id: str
     text: str
     completed: bool
+    due_date: Optional[datetime] = None
+    calendar_event_id: Optional[str] = None
     order_index: Optional[str] = None
     created_at: datetime
 
@@ -85,6 +121,7 @@ class ProjectUpdate(BaseModel):
     title: Optional[str] = None
     description: Optional[str] = None
     due_date: Optional[str] = None
+    plan: Optional[str] = None
     
     @field_validator('due_date')
     @classmethod
@@ -105,6 +142,7 @@ class ProjectResponse(BaseModel):
     title: str
     description: Optional[str] = None
     due_date: Optional[datetime] = None
+    plan: Optional[str] = None
     created_at: datetime
     updated_at: datetime
     todos: List[TodoItemResponse] = []
@@ -119,6 +157,7 @@ class ProjectChatMessage(BaseModel):
 
 class ProjectChatResponse(BaseModel):
     response: str
+    plan_updated: bool = False  # Indicates if the execution plan was updated
 
 
 class ProjectChatHistoryItem(BaseModel):
@@ -129,4 +168,25 @@ class ProjectChatHistoryItem(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class GeneratePlanRequest(BaseModel):
+    message: Optional[str] = None  # Optional user message for clarification
+
+
+class GeneratePlanResponse(BaseModel):
+    plan: str
+    needs_clarification: bool = False
+    clarification_question: Optional[str] = None
+
+
+class GenerateTodosResponse(BaseModel):
+    todos: List[TodoItemResponse]
+    message: str
+
+
+class ScheduleTodosResponse(BaseModel):
+    scheduled_count: int
+    message: str
+    calendar_events: List[dict] = []
 

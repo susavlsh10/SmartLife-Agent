@@ -73,6 +73,8 @@ export interface TodoItem {
   id: string
   text: string
   completed: boolean
+  due_date?: string
+  calendar_event_id?: string
   order_index?: string
   created_at: string
 }
@@ -82,6 +84,7 @@ export interface Project {
   title: string
   description?: string
   due_date?: string
+  plan?: string
   created_at: string
   updated_at: string
   todos: TodoItem[]
@@ -110,7 +113,7 @@ export const projectsApi = {
     return request<Project>(`/projects/${projectId}`)
   },
 
-  update: async (projectId: string, data: { title?: string; description?: string; due_date?: string }) => {
+  update: async (projectId: string, data: { title?: string; description?: string; due_date?: string; plan?: string }) => {
     return request<Project>(`/projects/${projectId}`, {
       method: 'PUT',
       body: JSON.stringify(data),
@@ -123,14 +126,14 @@ export const projectsApi = {
     })
   },
 
-  addTodo: async (projectId: string, text: string) => {
+  addTodo: async (projectId: string, text: string, due_date?: string) => {
     return request<TodoItem>(`/projects/${projectId}/todos`, {
       method: 'POST',
-      body: JSON.stringify({ text, completed: false }),
+      body: JSON.stringify({ text, completed: false, due_date }),
     })
   },
 
-  updateTodo: async (projectId: string, todoId: string, data: { text?: string; completed?: boolean }) => {
+  updateTodo: async (projectId: string, todoId: string, data: { text?: string; completed?: boolean; due_date?: string }) => {
     return request<TodoItem>(`/projects/${projectId}/todos/${todoId}`, {
       method: 'PUT',
       body: JSON.stringify(data),
@@ -144,7 +147,7 @@ export const projectsApi = {
   },
 
   sendChatMessage: async (projectId: string, message: string) => {
-    return request<{ response: string }>(`/projects/${projectId}/chat`, {
+    return request<{ response: string; plan_updated: boolean }>(`/projects/${projectId}/chat`, {
       method: 'POST',
       body: JSON.stringify({ message }),
     })
@@ -152,6 +155,47 @@ export const projectsApi = {
 
   getChatHistory: async (projectId: string) => {
     return request<ProjectChatMessage[]>(`/projects/${projectId}/chat/history`)
+  },
+
+  generatePlan: async (projectId: string, message?: string) => {
+    return request<{ plan: string; needs_clarification: boolean; clarification_question?: string }>(
+      `/projects/${projectId}/generate-plan`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ message: message || null }),
+      }
+    )
+  },
+
+  updatePlan: async (projectId: string, plan: string) => {
+    return request<Project>(`/projects/${projectId}/plan`, {
+      method: 'PUT',
+      body: JSON.stringify({ plan }),
+    })
+  },
+
+  generateTodos: async (projectId: string) => {
+    return request<{ todos: TodoItem[]; message: string }>(`/projects/${projectId}/generate-todos`, {
+      method: 'POST',
+    })
+  },
+
+  scheduleTodos: async (projectId: string) => {
+    return request<{ scheduled_count: number; message: string; calendar_events: any[] }>(
+      `/projects/${projectId}/schedule-todos`,
+      {
+        method: 'POST',
+      }
+    )
+  },
+
+  scheduleTodo: async (projectId: string, todoId: string) => {
+    return request<{ success: boolean; calendar_event_id: string; message: string }>(
+      `/projects/${projectId}/todos/${todoId}/schedule`,
+      {
+        method: 'POST',
+      }
+    )
   },
 }
 

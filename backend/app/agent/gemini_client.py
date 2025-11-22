@@ -32,3 +32,28 @@ async def get_gemini_response(message: str) -> str:
     except Exception as e:
         raise Exception(f"Error calling Gemini API: {str(e)}")
 
+
+async def get_gemini_response_json(message: str) -> str:
+    """Get JSON response from Gemini AI model"""
+    if not GEMINI_API_KEY:
+        raise ValueError(
+            "GEMINI_API_KEY environment variable is not set. Please set it to use the chat feature."
+        )
+
+    try:
+        # Use the Gemini Pro model with JSON mode
+        model = genai.GenerativeModel(
+            "gemini-2.5-flash",
+            generation_config={"response_mime_type": "application/json"}
+        )
+        
+        # Generate response
+        response = model.generate_content(message)
+        
+        if response and response.text:
+            return response.text
+        else:
+            return "[]"
+    except Exception as e:
+        raise Exception(f"Error calling Gemini API: {str(e)}")
+

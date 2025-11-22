@@ -64,7 +64,18 @@ class MCPProjectAgent:
             # Get the backend directory path
             backend_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
             
-            # Update paths to be absolute
+            # Update paths in args to be absolute
+            if "args" in server_config and server_config["args"]:
+                updated_args = []
+                for arg in server_config["args"]:
+                    # If arg looks like a path to a Python file, make it absolute
+                    if arg.endswith('.py') and not os.path.isabs(arg):
+                        updated_args.append(os.path.join(backend_dir, arg))
+                    else:
+                        updated_args.append(arg)
+                server_config["args"] = updated_args
+            
+            # Update paths in env to be absolute
             if "env" in server_config and server_config["env"]:
                 for key, value in server_config["env"].items():
                     if value and not os.path.isabs(value):
@@ -99,35 +110,57 @@ class MCPProjectAgent:
     
     async def _connect_to_servers(self) -> None:
         """Connect to configured MCP servers for project management."""
-        # Configuration for Gmail and Google Calendar servers
         backend_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+        config_path = os.path.join(backend_dir, "server_config.json")
         
-        servers = {
-            "gmail": {
-                "command": "python",
-                "args": [os.path.join(backend_dir, "app/mcp_servers/gmail_mcp_server.py")],
-                "env": {
-                    "GMAIL_CREDENTIALS_FILE": os.path.join(backend_dir, "gmail/google_credentials.json"),
-                    "GMAIL_TOKEN_FILE": os.path.join(backend_dir, "gmail/gmail_token.json")
-                }
-            },
-            "google_calendar": {
-                "command": "python",
-                "args": [os.path.join(backend_dir, "app/mcp_servers/google_calendar_server.py")],
-                "env": {
-                    "GMAIL_CREDENTIALS_FILE": os.path.join(backend_dir, "gmail/google_credentials.json"),
-                    "GMAIL_TOKEN_FILE": os.path.join(backend_dir, "gmail/token.json")
+        # Load server configuration from server_config.json
+        try:
+            with open(config_path, 'r') as f:
+                # Remove comments from JSON (simple approach)
+                content = f.read()
+                lines = [line.split('//')[0] for line in content.split('\n')]
+                clean_content = '\n'.join(lines)
+                config = json.loads(clean_content)
+                servers = config.get("mcpServers", {})
+        except FileNotFoundError:
+            logger.warning(f"Config file not found at {config_path}, using default servers")
+            # Fallback to hardcoded configuration
+            servers = {
+                "gmail": {
+                    "command": "python",
+                    "args": [os.path.join(backend_dir, "app/mcp_servers/gmail_mcp_server.py")],
+                    "env": {
+                        "GMAIL_CREDENTIALS_FILE": os.path.join(backend_dir, "gmail/google_credentials.json"),
+                        "GMAIL_TOKEN_FILE": os.path.join(backend_dir, "gmail/gmail_token.json")
+                    }
+                },
+                "google_calendar": {
+                    "command": "python",
+                    "args": [os.path.join(backend_dir, "app/mcp_servers/google_calendar_server.py")],
+                    "env": {
+                        "GMAIL_CREDENTIALS_FILE": os.path.join(backend_dir, "gmail/google_credentials.json"),
+                        "GMAIL_TOKEN_FILE": os.path.join(backend_dir, "gmail/token.json")
+                    }
                 }
             }
-        }
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse server_config.json: {e}")
+            raise
         
-        for server_name, server_config in servers.items():
-            await self._connect_to_server(server_name, server_config)
+        # Only connect to servers we need for project management
+        # Filter to gmail, google_calendar, and project_plan
+        enabled_servers = ["gmail", "google_calendar", "project_plan"]
+        
+        for server_name in enabled_servers:
+            if server_name in servers:
+                await self._connect_to_server(server_name, servers[server_name])
+            else:
+                logger.warning(f"Server '{server_name}' not found in configuration")
     
     async def chat(self, 
                    project_id: str,
                    user_message: str,
-                   project_context: str) -> str:
+                   project_context: str) -> tuple[str, Optional[str]]:
         """
         Process a chat message for a specific project.
         
@@ -137,26 +170,39 @@ class MCPProjectAgent:
             project_context: Context about the project (title, description, todos, etc.)
             
         Returns:
-            AI assistant's response
+            tuple: (AI assistant's response, updated plan or None)
         """
+        # Track if plan was updated
+        updated_plan: Optional[str] = None
+        
         # Initialize conversation for this project if not exists
         if project_id not in self.project_conversations:
             # First message includes project context and current date
             today_date = datetime.now().strftime("%Y-%m-%d")
-            system_prompt = f"""Today's date is {today_date}. You are a helpful project management assistant with access to Gmail and Google Calendar.
+            system_prompt = f"""Today's date is {today_date}. You are a helpful project management assistant with access to Gmail, Google Calendar, and Project Plan Management tools.
+
+**CURRENT PROJECT ID: {project_id}**
 
 Current Project Context:
 {project_context}
 
 You can help the user with:
-- Planning and breaking down tasks
-- Scheduling meetings and deadlines
-- Sending emails to team members or stakeholders
-- Finding free time slots for meetings
-- Setting priorities and organizing work
+- **Creating and managing execution plans**: Use the update_execution_plan tool to create comprehensive project plans
+- **Refining plans**: When users ask to modify or improve the plan, use update_execution_plan with action='refine'
+- **Planning and breaking down tasks**: Help structure work into manageable pieces
+- **Scheduling meetings and deadlines**: Use calendar tools to find time and schedule events
+- **Sending emails**: Communicate with team members or stakeholders via Gmail
+- **Finding free time slots**: Check calendar availability
+- **Setting priorities**: Help organize and prioritize work
 - Any other project-related questions
 
-If you need to send emails or schedule meetings, use the available tools. Ask for clarification if needed.
+**CRITICAL INSTRUCTIONS:**
+1. When the user asks you to generate, create, update, or refine an execution plan, you MUST use the 'update_execution_plan' tool. Don't just describe the plan in your response - actually call the tool to save it!
+2. ALWAYS use the project_id "{project_id}" when calling project plan management tools (update_execution_plan, get_execution_plan, append_to_plan, clear_execution_plan).
+3. You have ALL the information about the current project in the context above - you should NEVER ask the user for the project ID.
+4. When working with the current project's plan, automatically use the project_id shown above.
+
+If you need to send emails or schedule meetings, use the available tools. Ask for clarification only when you need information that's not in the project context.
 
 User: {user_message}"""
             
@@ -167,8 +213,10 @@ User: {user_message}"""
             self.project_conversations[project_id] = [user_content]
         else:
             # Subsequent messages include updated context
-            context_update = f"""[Updated Project Context]
+            context_update = f"""[Updated Project Context - Project ID: {project_id}]
 {project_context}
+
+Remember: Always use project_id "{project_id}" for any project plan management tool calls.
 
 User: {user_message}"""
             user_content = genai_types.Content(
@@ -225,6 +273,12 @@ User: {user_message}"""
                     tool_result = await session.call_tool(tool_name, args)
                     logger.info(f"Project {project_id}: Tool '{tool_name}' executed")
                     
+                    # Track plan updates
+                    if tool_name == "update_execution_plan" and not tool_result.isError:
+                        # Extract the plan content from the args and update outer scope variable
+                        updated_plan = args.get("plan_content", "")
+                        logger.info(f"Project {project_id}: Plan updated via MCP tool with content length: {len(updated_plan)}")
+                    
                     if tool_result.isError:
                         tool_response = {"error": tool_result.content[0].text}
                         logger.warning(f"Tool '{tool_name}' error: {tool_result.content[0].text}")
@@ -268,7 +322,8 @@ User: {user_message}"""
                 if hasattr(part, 'text') and part.text:
                     final_text += part.text
         
-        return final_text if final_text else "I apologize, but I couldn't generate a response."
+        response_text = final_text if final_text else "I apologize, but I couldn't generate a response."
+        return response_text, updated_plan
     
     async def cleanup(self):
         """Cleanup MCP sessions."""
