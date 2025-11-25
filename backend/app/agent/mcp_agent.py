@@ -43,8 +43,11 @@ def clean_schema(schema: dict) -> dict:
 class MCPProjectAgent:
     """Agentic assistant for project management with Gmail and Calendar integration."""
     
-    def __init__(self):
+    def __init__(self, user_id: str):
+        self.user_id = user_id
         self.sessions: List[ClientSession] = []
+        self.calendar_sessions: Dict[str, ClientSession] = {}  # user_id -> calendar session
+        self.calendar_exit_stacks: Dict[str, AsyncExitStack] = {}  # user_id -> exit stack for cleanup
         self.exit_stack = AsyncExitStack()
         self.gemini_client = genai.Client()
         self.gemini_tools = None
@@ -76,12 +79,22 @@ class MCPProjectAgent:
                 server_config["args"] = updated_args
             
             # Update paths in env to be absolute
+            # Prepare environment variables
+            env = os.environ.copy()
             if "env" in server_config and server_config["env"]:
+                # Update paths to be absolute (but not for non-path env vars like CALENDAR_USER_ID)
                 for key, value in server_config["env"].items():
-                    if value and not os.path.isabs(value):
-                        server_config["env"][key] = os.path.join(backend_dir, value)
+                    if value and isinstance(value, str) and not os.path.isabs(value):
+                        # Only convert to absolute path if it looks like a file path
+                        if key.endswith("_FILE") or key.endswith("_PATH") or "/" in value or "\\" in value:
+                            server_config["env"][key] = os.path.join(backend_dir, value)
+                    env[key] = server_config["env"][key]
             
-            server_params = StdioServerParameters(**server_config)
+            server_params = StdioServerParameters(
+                command=server_config["command"],
+                args=server_config["args"],
+                env=env if "env" in server_config else None
+            )
             stdio_transport = await self.exit_stack.enter_async_context(
                 stdio_client(server_params)
             )
@@ -108,8 +121,77 @@ class MCPProjectAgent:
             logger.error(f"Failed to connect to {server_name}: {e}")
             raise
     
+    async def _get_calendar_session_for_user(self, user_id: str) -> ClientSession:
+        """Get or create a calendar server session for a specific user."""
+        if user_id in self.calendar_sessions:
+            return self.calendar_sessions[user_id]
+        
+        # Create a new calendar server subprocess for this user
+        backend_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+        
+        # Use environment variable to pass user_id to the server
+        server_config = {
+            "command": "python",
+            "args": [os.path.join(backend_dir, "app/mcp_servers/google_calendar_server.py")],
+            "env": {
+                "CALENDAR_USER_ID": user_id,  # Pass user_id via env
+                "PYTHONPATH": backend_dir
+            }
+        }
+        
+        # Create new exit stack for this user's server
+        user_exit_stack = AsyncExitStack()
+        await user_exit_stack.__aenter__()
+        
+        try:
+            # Prepare environment variables
+            env = os.environ.copy()
+            if "env" in server_config:
+                env.update(server_config["env"])
+            
+            server_params = StdioServerParameters(
+                command=server_config["command"],
+                args=server_config["args"],
+                env=env
+            )
+            stdio_transport = await user_exit_stack.enter_async_context(
+                stdio_client(server_params)
+            )
+            read, write = stdio_transport
+            session = await user_exit_stack.enter_async_context(
+                ClientSession(read, write)
+            )
+            await session.initialize()
+            
+            # Store session and exit stack for cleanup
+            self.calendar_sessions[user_id] = session
+            self.calendar_exit_stacks[user_id] = user_exit_stack
+            
+            # Register tools from this session
+            response = await session.list_tools()
+            tools = response.tools
+            logger.info(f"Connected calendar server for user {user_id} with tools: {[t.name for t in tools]}")
+            
+            for tool in tools:
+                # Map tool name to this user's session
+                self.tool_to_session[tool.name] = session
+                # Only add tools once to available_tools (they're the same for all users)
+                if not any(t["name"] == tool.name for t in self.available_tools):
+                    self.available_tools.append({
+                        "name": tool.name,
+                        "description": tool.description,
+                        "input_schema": tool.inputSchema
+                    })
+            
+            return session
+        except Exception as e:
+            # Cleanup on error
+            await user_exit_stack.aclose()
+            raise
+    
     async def _connect_to_servers(self) -> None:
         """Connect to configured MCP servers for project management."""
+        # Configuration for non-user-specific servers
         backend_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
         config_path = os.path.join(backend_dir, "server_config.json")
         
@@ -156,7 +238,8 @@ class MCPProjectAgent:
                 await self._connect_to_server(server_name, servers[server_name])
             else:
                 logger.warning(f"Server '{server_name}' not found in configuration")
-    
+        # Connect to calendar server for this agent's user
+        await self._get_calendar_session_for_user(self.user_id)
     async def chat(self, 
                    project_id: str,
                    user_message: str,
@@ -269,7 +352,15 @@ User: {user_message}"""
                 
                 tool_response: dict
                 try:
-                    session = self.tool_to_session[tool_name]
+                    # For calendar tools, ensure we use the correct user's session
+                    if tool_name in ["schedule_meeting", "list_upcoming_events", "find_free_time"]:
+                        # Get or create calendar session for this agent's user
+                        session = await self._get_calendar_session_for_user(self.user_id)
+                    else:
+                        session = self.tool_to_session.get(tool_name)
+                        if not session:
+                            raise ValueError(f"No session found for tool '{tool_name}'")
+                    
                     tool_result = await session.call_tool(tool_name, args)
                     logger.info(f"Project {project_id}: Tool '{tool_name}' executed")
                     
@@ -327,28 +418,45 @@ User: {user_message}"""
     
     async def cleanup(self):
         """Cleanup MCP sessions."""
+        # Cleanup calendar sessions
+        for user_id, exit_stack in self.calendar_exit_stacks.items():
+            try:
+                await exit_stack.aclose()
+            except Exception as e:
+                logger.error(f"Error cleaning up calendar session for user {user_id}: {e}")
+        
+        # Cleanup other sessions
         await self.exit_stack.aclose()
         self.sessions.clear()
+        self.calendar_sessions.clear()
+        self.calendar_exit_stacks.clear()
         self.available_tools.clear()
         self.tool_to_session.clear()
 
 
-# Global agent instance (singleton pattern for efficiency)
-_global_agent: Optional[MCPProjectAgent] = None
+# Per-user agent instances (one per user for proper isolation)
+_user_agents: Dict[str, MCPProjectAgent] = {}
 
 
-async def get_mcp_agent() -> MCPProjectAgent:
-    """Get or create the global MCP agent instance."""
-    global _global_agent
-    if _global_agent is None:
-        _global_agent = MCPProjectAgent()
-        await _global_agent.initialize()
-    return _global_agent
+async def get_mcp_agent(user_id: str) -> MCPProjectAgent:
+    """Get or create an MCP agent instance for a specific user."""
+    global _user_agents
+    if user_id not in _user_agents:
+        agent = MCPProjectAgent(user_id)
+        await agent.initialize()
+        _user_agents[user_id] = agent
+    return _user_agents[user_id]
 
 
-async def cleanup_mcp_agent():
-    """Cleanup the global MCP agent instance."""
-    global _global_agent
-    if _global_agent is not None:
-        await _global_agent.cleanup()
-        _global_agent = None
+async def cleanup_mcp_agent(user_id: Optional[str] = None):
+    """Cleanup MCP agent instance(s)."""
+    global _user_agents
+    if user_id:
+        if user_id in _user_agents:
+            await _user_agents[user_id].cleanup()
+            del _user_agents[user_id]
+    else:
+        # Cleanup all
+        for agent in _user_agents.values():
+            await agent.cleanup()
+        _user_agents.clear()

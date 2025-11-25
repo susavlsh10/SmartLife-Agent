@@ -54,11 +54,26 @@ export const authApi = {
   },
 }
 
+export interface ProposedProject {
+  title: string
+  description: string
+  due_date?: string | null
+}
+
+export interface ChatResponse {
+  response: string
+  proposed_projects?: ProposedProject[]
+  requires_confirmation?: boolean
+}
+
 export const chatApi = {
-  sendMessage: async (message: string) => {
-    return request<{ response: string }>('/chat', {
+  sendMessage: async (message: string, existingProjects?: ProposedProject[]) => {
+    return request<ChatResponse>('/chat', {
       method: 'POST',
-      body: JSON.stringify({ message }),
+      body: JSON.stringify({ 
+        message,
+        existing_projects: existingProjects || undefined
+      }),
     })
   },
 

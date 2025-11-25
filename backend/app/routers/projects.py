@@ -319,7 +319,7 @@ Todo Items:
     
     # Get AI response using MCP agent with Gmail and Calendar tools
     try:
-        agent = await get_mcp_agent()
+        agent = await get_mcp_agent(user_id=user_id)
         response, updated_plan = await agent.chat(
             project_id=project_id,
             user_message=chat_data.message,
