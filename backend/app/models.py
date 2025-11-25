@@ -1,5 +1,5 @@
 from pydantic import BaseModel, EmailStr, field_validator
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from datetime import datetime
 
 
@@ -31,6 +31,8 @@ class ChatMessage(BaseModel):
 
 class ChatResponse(BaseModel):
     response: str
+    proposed_projects: Optional[List[dict]] = None  # List of proposed projects with title, description, due_date
+    requires_confirmation: bool = False  # Whether user needs to confirm project creation
 
 
 class ChatHistoryItem(BaseModel):
