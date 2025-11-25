@@ -289,7 +289,7 @@ class GoogleCalendarServer:
         try:
             max_results = args.get('max_results', 10)
             days_ahead = args.get('days_ahead', 7)
-            
+
             # Calculate time bounds in local timezone
             now = datetime.now(self.local_timezone)
             time_max = now + timedelta(days=days_ahead)
@@ -405,7 +405,15 @@ class GoogleCalendarServer:
             )]
 
 async def main():
-    calendar_server = GoogleCalendarServer()
+    # Get user_id from environment variable (set by MCP agent)
+    user_id = os.getenv('CALENDAR_USER_ID')
+    if not user_id:
+        raise RuntimeError(
+            "CALENDAR_USER_ID environment variable is required. "
+            "This server must be started with a user_id to ensure proper calendar isolation."
+        )
+    
+    calendar_server = GoogleCalendarServer(user_id=user_id)
     async with stdio_server() as (read_stream, write_stream):
         await calendar_server.server.run(
             read_stream, write_stream, calendar_server.server.create_initialization_options()
