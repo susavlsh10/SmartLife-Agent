@@ -28,6 +28,11 @@
         "dominos": {
             "command": "uv",
             "args": ["run", "mcp_servers/dominos_server.py"]
+        },
+        "project_plan": {
+            "command": "uv",
+            "args": ["run", "mcp_servers/project_plan_server.py"],
+            "env": {}
         }
     }
 }
