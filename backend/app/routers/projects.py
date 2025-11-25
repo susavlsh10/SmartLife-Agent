@@ -447,7 +447,7 @@ Otherwise, provide the complete execution plan in a clear, structured markdown f
     
     # Get AI response using MCP agent
     try:
-        agent = await get_mcp_agent()
+        agent = await get_mcp_agent(user_id=user_id)
         response, updated_plan = await agent.chat(
             project_id=f"{project_id}_plan",
             user_message=prompt,
@@ -578,7 +578,7 @@ Suggest times between 9:00 AM and 6:00 PM for optimal productivity.
 Use the generate_todos_from_plan tool to create the TODOs."""
     
     try:
-        agent = await get_mcp_agent()
+        agent = await get_mcp_agent(user_id=user_id)
         
         # Use a custom conversation to track tool calls
         response, _ = await agent.chat(
@@ -826,7 +826,7 @@ For each TODO:
 
 Use the Google Calendar MCP tools to create these events. Be smart about scheduling - don't overlap events, consider reasonable working hours."""
             
-            agent = await get_mcp_agent()
+            agent = await get_mcp_agent(user_id=user_id)
             response, _ = await agent.chat(
                 project_id=f"{project_id}_schedule",
                 user_message=context,

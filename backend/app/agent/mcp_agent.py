@@ -132,7 +132,7 @@ class MCPProjectAgent:
         # Use environment variable to pass user_id to the server
         server_config = {
             "command": "python",
-            "args": [os.path.join(backend_dir, "app/mcp_servers/google_calendar_server.py")],
+            "args": [os.path.join(backend_dir, "mcp_servers/google_calendar_server.py")],
             "env": {
                 "CALENDAR_USER_ID": user_id,  # Pass user_id via env
                 "PYTHONPATH": backend_dir
@@ -204,13 +204,14 @@ class MCPProjectAgent:
                 clean_content = '\n'.join(lines)
                 config = json.loads(clean_content)
                 servers = config.get("mcpServers", {})
+                servers["google_calendar"]["env"]["CALENDAR_USER_ID"] = self.user_id
         except FileNotFoundError:
             logger.warning(f"Config file not found at {config_path}, using default servers")
             # Fallback to hardcoded configuration
             servers = {
                 "gmail": {
                     "command": "python",
-                    "args": [os.path.join(backend_dir, "app/mcp_servers/gmail_mcp_server.py")],
+                    "args": [os.path.join(backend_dir, "mcp_servers/gmail_mcp_server.py")],
                     "env": {
                         "GMAIL_CREDENTIALS_FILE": os.path.join(backend_dir, "gmail/google_credentials.json"),
                         "GMAIL_TOKEN_FILE": os.path.join(backend_dir, "gmail/gmail_token.json")
@@ -218,10 +219,9 @@ class MCPProjectAgent:
                 },
                 "google_calendar": {
                     "command": "python",
-                    "args": [os.path.join(backend_dir, "app/mcp_servers/google_calendar_server.py")],
+                    "args": [os.path.join(backend_dir, "mcp_servers/google_calendar_server.py")],
                     "env": {
-                        "GMAIL_CREDENTIALS_FILE": os.path.join(backend_dir, "gmail/google_credentials.json"),
-                        "GMAIL_TOKEN_FILE": os.path.join(backend_dir, "gmail/token.json")
+                        "CALENDAR_USER_ID": self.user_id,
                     }
                 }
             }
